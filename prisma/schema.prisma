@@ -1,0 +1,1006 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "relationJoins", "omitApi"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
+  extensions = [pgcrypto, pg_trgm, uuid_ossp(map: "uuid-ossp")]
+}
+
+
+// ENUMS
+
+
+enum UserRole {
+  RETAIL
+  PREMIUM
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum KycStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum AccountType {
+  EQUITY
+  FUTURES
+  OPTIONS
+  COMMODITY
+  CURRENCY
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum InstrumentType {
+  EQUITY
+  INDEX
+  FUTURES
+  OPTIONS
+  ETF
+  BOND
+  CURRENCY
+  COMMODITY
+}
+
+enum Exchange {
+  NSE
+  BSE
+  MCX
+  NCDEX
+  NYSE
+  NASDAQ
+}
+
+enum OptionType {
+  CALL
+  PUT
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP_LOSS
+  STOP_LOSS_MARKET
+}
+
+enum OrderValidity {
+  DAY
+  IOC // Immediate or Cancel
+  GTT // Good Till Triggered
+  GTC // Good Till Cancelled
+}
+
+enum OrderStatus {
+  PENDING            // Created, not yet sent to exchange
+  OPEN               // Sent to exchange, awaiting fill
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  REJECTED
+  EXPIRED
+  TRIGGER_PENDING    // SL / GTT waiting for trigger price
+}
+
+enum ProductType {
+  CNC  // Cash and Carry (delivery)
+  MIS  // Margin Intraday Square-off
+  NRML // Normal (F&O carry-forward)
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_BUY
+  TRADE_SELL
+  BROKERAGE
+  STT
+  STAMP_DUTY
+  GST
+  EXCHANGE_FEE
+  DIVIDEND
+  BONUS_CREDIT
+  ADJUSTMENT
+}
+
+enum AlertCondition {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PRICE_CROSSES
+  PERCENT_CHANGE_UP
+  PERCENT_CHANGE_DOWN
+  VOLUME_ABOVE
+  RSI_ABOVE
+  RSI_BELOW
+}
+
+enum AlertStatus {
+  ACTIVE
+  TRIGGERED
+  EXPIRED
+  DISABLED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum GttTriggerType {
+  SINGLE
+  OCO // One-Cancels-Other
+}
+
+enum GttStatus {
+  ACTIVE
+  TRIGGERED
+  CANCELLED
+  EXPIRED
+}
+
+enum OhlcvInterval {
+  ONE_MINUTE
+  THREE_MINUTE
+  FIVE_MINUTE
+  FIFTEEN_MINUTE
+  THIRTY_MINUTE
+  ONE_HOUR
+  FOUR_HOUR
+  ONE_DAY
+  ONE_WEEK
+  ONE_MONTH
+}
+
+enum AuditAction {
+  USER_LOGIN
+  USER_LOGOUT
+  USER_REGISTER
+  KYC_SUBMITTED
+  KYC_APPROVED
+  KYC_REJECTED
+  PASSWORD_CHANGED
+  TWO_FA_ENABLED
+  TWO_FA_DISABLED
+  ORDER_PLACED
+  ORDER_MODIFIED
+  ORDER_CANCELLED
+  FUNDS_DEPOSITED
+  FUNDS_WITHDRAWN
+  ACCOUNT_SUSPENDED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  WATCHLIST_CREATED
+  ALERT_TRIGGERED
+  ADMIN_ACTION
+}
+
+
+// USERS & AUTH
+
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String    @unique
+  emailVerified    DateTime?
+  phone            String?   @unique
+  phoneVerified    Boolean   @default(false)
+  passwordHash     String?
+  name             String
+  avatarUrl        String?
+  role             UserRole  @default(RETAIL)
+  kycStatus        KycStatus @default(PENDING)
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String?   // Stored encrypted; null until 2FA setup
+  isActive         Boolean   @default(true)
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  oauthAccounts OAuthAccount[]
+  kyc           KycDocument?
+  watchlists    Watchlist[]
+  alerts        Alert[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  apiKeys       ApiKey[]
+  preference    UserPreference?
+  devices       UserDevice[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@index([kycStatus])
+  @@index([createdAt(sort: Desc)])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid
+  token        String   @unique // Access token hash
+  refreshToken String   @unique // Refresh token hash
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model OAuthAccount {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String  @db.Uuid
+  provider          String  // "google" | "github"
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model KycDocument {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @unique @db.Uuid
+  panNumber        String?
+  aadharNumber     String?
+  panDocUrl        String?
+  aadharFrontUrl   String?
+  aadharBackUrl    String?
+  selfieUrl        String?
+  bankAccountNo    String?
+  bankIfsc         String?
+  bankName         String?
+  cancelledCheqUrl String?
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedBy       String?   @db.Uuid
+  rejectionReason  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kyc_documents")
+}
+
+model UserPreference {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String        @unique @db.Uuid
+  theme                String        @default("dark")        // "dark" | "light" | "system"
+  defaultExchange      Exchange      @default(NSE)
+  defaultProductType   ProductType   @default(CNC)
+  defaultOrderValidity OrderValidity @default(DAY)
+  chartType            String        @default("candlestick") // "candlestick" | "line" | "area"
+  chartInterval        OhlcvInterval @default(FIVE_MINUTE)
+  showPnlInPercent     Boolean       @default(false)
+  emailNotifications   Boolean       @default(true)
+  smsNotifications     Boolean       @default(false)
+  pushNotifications    Boolean       @default(true)
+  soundAlerts          Boolean       @default(true)
+  language             String        @default("en")
+  timezone             String        @default("Asia/Kolkata")
+  updatedAt            DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model UserDevice {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @db.Uuid
+  deviceToken  String    @unique // FCM / APNS push token
+  platform     String            // "ios" | "android" | "web"
+  deviceName   String?
+  isActive     Boolean   @default(true)
+  registeredAt DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_devices")
+}
+
+model ApiKey {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @db.Uuid
+  name        String
+  keyHash     String    @unique // SHA-256 of the actual key; plaintext shown once, never stored
+  prefix      String            // First 8 chars shown in UI e.g. "sk_live_ab12cd34"
+  permissions String[]          // ["orders:read", "orders:write", "portfolio:read"]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+
+// TRADING ACCOUNTS
+
+
+model Account {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @db.Uuid
+  accountNumber String        @unique
+  accountType   AccountType   @default(EQUITY)
+  status        AccountStatus @default(ACTIVE)
+  brokerName    String?
+  dematId       String?       // DP ID + Client ID
+
+  // All balances in paise (BigInt) — ₹100.50 stored as 10050
+  availableCash   BigInt @default(0)
+  usedMargin      BigInt @default(0)
+  blockedFunds    BigInt @default(0) // Blocked for pending open orders
+  collateralValue BigInt @default(0) // Pledged securities value
+  intradayLimit   BigInt @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id])
+  portfolio    Portfolio[]
+  orders       Order[]
+  trades       Trade[]
+  transactions FundTransaction[]
+  margin       AccountMargin?
+  gttRules     GttRule[]
+
+  @@index([userId])
+  @@index([accountNumber])
+  @@index([status])
+  @@map("accounts")
+}
+
+model AccountMargin {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId       String   @unique @db.Uuid
+  totalMargin     BigInt   @default(0)
+  usedMargin      BigInt   @default(0)
+  availableMargin BigInt   @default(0)
+  exposureMargin  BigInt   @default(0)
+  spanMargin      BigInt   @default(0) // F&O SPAN margin
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("account_margins")
+}
+
+
+// INSTRUMENTS (Master Data)
+
+model Instrument {
+  symbol         String         @id // "RELIANCE", "NIFTY24OCTFUT"
+  name           String
+  exchange       Exchange
+  instrumentType InstrumentType
+  isin           String?        @unique
+  lotSize        Int            @default(1)
+  tickSize       Decimal        @db.Decimal(10, 4)
+  faceValue      Decimal?       @db.Decimal(10, 2)
+  sector         String?
+  industry       String?
+  isActive       Boolean        @default(true)
+  isTradable     Boolean        @default(true)
+
+  // Derivatives only
+  underlyingSymbol String?
+  expiryDate       DateTime?    @db.Date
+  strikePrice      Decimal?     @db.Decimal(12, 2)
+  optionType       OptionType?
+
+  // Circuit limits and reference prices — all in paise
+  upperCircuit BigInt?
+  lowerCircuit BigInt?
+  prevClose    BigInt?
+  high52Week   BigInt?
+  low52Week    BigInt?
+
+  // Fundamentals
+  marketCap     BigInt?
+  peRatio       Decimal? @db.Decimal(8, 2)
+  pbRatio       Decimal? @db.Decimal(8, 2)
+  dividendYield Decimal? @db.Decimal(6, 4)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders         Order[]
+  portfolio      Portfolio[]
+  marginConfig   InstrumentMargin?
+  watchlistItems WatchlistItem[]
+  tickData       TickData[]
+  ohlcvData      OhlcvCandle[]
+  alerts         Alert[]
+  marketDepth    MarketDepth?
+  dailySnapshots DailySnapshot[]
+
+  @@index([exchange])
+  @@index([instrumentType])
+  @@index([isActive, isTradable])
+  @@index([underlyingSymbol, expiryDate])
+  // Add these via raw SQL after migration:
+  // CREATE INDEX idx_instruments_name_trgm ON instruments USING gin(name gin_trgm_ops);
+  // CREATE INDEX idx_instruments_symbol_trgm ON instruments USING gin(symbol gin_trgm_ops);
+  @@map("instruments")
+}
+
+model InstrumentMargin {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol          String   @unique
+  intradayMargin  Decimal  @db.Decimal(5, 4) // e.g. 0.05 = 5%
+  overnightMargin Decimal  @db.Decimal(5, 4)
+  spanMargin      Decimal? @db.Decimal(5, 4)
+  exposureMargin  Decimal? @db.Decimal(5, 4)
+  updatedAt       DateTime @updatedAt
+
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@map("instrument_margins")
+}
+
+
+// PORTFOLIO (Holdings / Positions)
+
+model Portfolio {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId   String      @db.Uuid
+  symbol      String
+  productType ProductType
+
+  // Quantities
+  quantity     Int @default(0) // Net qty; negative = short position (F&O)
+  buyQuantity  Int @default(0)
+  sellQuantity Int @default(0)
+
+  // Prices — all in paise
+  avgBuyPrice     BigInt @default(0)
+  avgSellPrice    BigInt @default(0)
+  lastTradedPrice BigInt @default(0)
+
+  // P&L — all in paise
+  realisedPnl   BigInt @default(0)
+  unrealisedPnl BigInt @default(0)
+
+  // Today's intraday totals
+  dayBuyQuantity  Int    @default(0)
+  daySellQuantity Int    @default(0)
+  dayBuyValue     BigInt @default(0)
+  daySellValue    BigInt @default(0)
+
+  // Optimistic concurrency control — must match on update
+  version Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account    Account    @relation(fields: [accountId], references: [id])
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@unique([accountId, symbol, productType])
+  @@index([accountId])
+  @@index([symbol])
+  @@map("portfolios")
+}
+
+
+// ORDERS
+
+
+model Order {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId       String        @db.Uuid
+  symbol          String
+  side            OrderSide
+  orderType       OrderType
+  productType     ProductType
+  validity        OrderValidity @default(DAY)
+  status          OrderStatus   @default(PENDING)
+
+  // Quantities
+  quantity        Int
+  filledQuantity  Int    @default(0)
+  pendingQuantity Int    @default(0) // Maintained by order service on each fill event
+  disclosedQty    Int?              // Iceberg: quantity visible in the order book
+
+  // Prices — in paise; null for MARKET orders
+  price        BigInt?
+  triggerPrice BigInt? // For STOP_LOSS / STOP_LOSS_MARKET / GTT
+  avgFillPrice BigInt  @default(0)
+
+  // Exchange info
+  exchangeOrderId String?
+  exchangeTime    DateTime?
+
+  // Bracket / Cover order support
+  parentOrderId String? @db.Uuid
+
+  // Metadata
+  tag             String? // User-defined label for grouping/filtering
+  rejectionReason String?
+  ipAddress       String?
+  source          String  @default("WEB") // "WEB" | "MOBILE" | "API"
+
+  // Optimistic concurrency lock
+  version Int @default(0)
+
+  placedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account     Account    @relation(fields: [accountId], references: [id])
+  instrument  Instrument @relation(fields: [symbol], references: [symbol])
+  trades      Trade[]
+  parentOrder Order?     @relation("OrderHierarchy", fields: [parentOrderId], references: [id])
+  childOrders Order[]    @relation("OrderHierarchy")
+
+  @@index([accountId, status])
+  @@index([accountId, placedAt(sort: Desc)])
+  @@index([symbol, status])
+  @@index([status, placedAt(sort: Desc)])
+  @@index([exchangeOrderId])
+  @@index([parentOrderId])
+  @@map("orders")
+}
+
+
+// TRADES (Executed fills — one order can produce multiple partial fills)
+
+
+model Trade {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId     String      @db.Uuid
+  accountId   String      @db.Uuid
+  symbol      String
+  side        OrderSide
+  productType ProductType
+
+  // Fill — all prices in paise
+  executedQty   Int
+  executedPrice BigInt // Per unit
+  executedValue BigInt // executedQty * executedPrice
+
+  // Per-trade charges — all in paise
+  brokerage   BigInt @default(0)
+  stt         BigInt @default(0) // Securities Transaction Tax
+  exchangeFee BigInt @default(0)
+  stampDuty   BigInt @default(0)
+  gst         BigInt @default(0)
+  sebiCharges BigInt @default(0)
+  totalCharges BigInt @default(0)
+
+  // Realised P&L for this fill (relevant for intraday square-off)
+  pnl BigInt @default(0)
+
+  // Exchange references
+  exchangeTradeId String?
+  exchangeTime    DateTime?
+
+  executedAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([orderId])
+  @@index([accountId, executedAt(sort: Desc)])
+  @@index([symbol, executedAt(sort: Desc)])
+  @@map("trades")
+}
+
+
+// FUND TRANSACTIONS (Ledger — every money movement)
+
+
+model FundTransaction {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId    String          @db.Uuid
+  type         TransactionType
+  amount       BigInt          // Positive = credit, negative = debit (in paise)
+  balanceAfter BigInt          // Balance snapshot immediately after this transaction
+
+  referenceId  String? // Order ID, Trade ID, or external payment reference
+  description  String?
+  utrNumber    String? // Unique Transaction Reference for bank transfers
+
+  // Compliance / settlement
+  segment        String?   // "EQ" | "FO" | "CD"
+  settlementNo   String?
+  tradeDate      DateTime? @db.Date
+  settlementDate DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, createdAt(sort: Desc)])
+  @@index([type])
+  @@index([referenceId])
+  @@map("fund_transactions")
+}
+
+
+// MARKET DATA — Pure PostgreSQL
+//
+// TickData    : raw ticks from exchange feed
+// OhlcvCandle : aggregated OHLCV for all intervals (1m, 5m, 1h, 1d, etc.)
+// MarketDepth : live Level 2 bid/ask (upserted per symbol, not historical)
+// DailySnapshot: end-of-day snapshot per symbol per date
+
+
+/// Raw price ticks from exchange feed.
+/// High write volume — consider partitioning by month via pg_partman.
+/// Add via raw SQL: pg_partman setup after migration.
+model TickData {
+  id        BigInt   @id @default(autoincrement())
+  symbol    String
+  price     BigInt   // Last traded price in paise
+  volume    BigInt   // Quantity traded in this tick
+  bid       BigInt?  // Best bid price in paise
+  ask       BigInt?  // Best ask price in paise
+  openInt   BigInt?  // Open interest — F&O only
+  tradedAt  DateTime @db.Timestamptz(3) // Microsecond precision from exchange
+  source    String?  // Data feed provider identifier
+  createdAt DateTime @default(now())
+
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@index([symbol, tradedAt(sort: Desc)])
+  @@index([tradedAt(sort: Desc)])
+  @@map("tick_data")
+}
+
+/// Aggregated OHLCV candles — single table for all intervals.
+/// Populated by a background BullMQ job that aggregates tick_data.
+/// Live (forming) candle has isClosed = false; updated on every tick.
+model OhlcvCandle {
+  id       BigInt        @id @default(autoincrement())
+  symbol   String
+  interval OhlcvInterval
+  openTime DateTime      @db.Timestamptz(0) // Candle bucket start
+  closeTime DateTime     @db.Timestamptz(0) // Candle bucket end
+
+  // All prices in paise
+  open  BigInt
+  high  BigInt
+  low   BigInt
+  close BigInt
+
+  volume   BigInt
+  trades   Int?    // Count of ticks aggregated into this candle
+  vwap     BigInt? // Volume-weighted average price in paise
+  openInt  BigInt? // Open interest at candle close — F&O only
+  isClosed Boolean @default(true) // false = candle still forming
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@unique([symbol, interval, openTime])
+  @@index([symbol, interval, openTime(sort: Desc)])
+  @@index([interval, openTime(sort: Desc)])
+  @@map("ohlcv_candles")
+}
+
+/// Level 2 market depth — top 5 bid/ask levels per symbol.
+/// One row per symbol; upserted on every depth update from the feed.
+/// Not historical — only stores current state.
+model MarketDepth {
+  id     String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol String @unique
+
+  // Bids (buy side) — sorted price descending
+  bid1Price BigInt? bid1Qty Int? bid1Orders Int?
+  bid2Price BigInt? bid2Qty Int? bid2Orders Int?
+  bid3Price BigInt? bid3Qty Int? bid3Orders Int?
+  bid4Price BigInt? bid4Qty Int? bid4Orders Int?
+  bid5Price BigInt? bid5Qty Int? bid5Orders Int?
+
+  // Asks (sell side) — sorted price ascending
+  ask1Price BigInt? ask1Qty Int? ask1Orders Int?
+  ask2Price BigInt? ask2Qty Int? ask2Orders Int?
+  ask3Price BigInt? ask3Qty Int? ask3Orders Int?
+  ask4Price BigInt? ask4Qty Int? ask4Orders Int?
+  ask5Price BigInt? ask5Qty Int? ask5Orders Int?
+
+  totalBuyQty  BigInt?
+  totalSellQty BigInt?
+  updatedAt    DateTime @updatedAt
+
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@map("market_depths")
+}
+
+/// End-of-day snapshot per symbol per trading date.
+/// One row per symbol per calendar day.
+/// Source of truth for historical price data in charts and P&L.
+model DailySnapshot {
+  id        BigInt   @id @default(autoincrement())
+  symbol    String
+  date      DateTime @db.Date
+
+  // Prices in paise
+  open      BigInt
+  high      BigInt
+  low       BigInt
+  close     BigInt
+  prevClose BigInt
+  change    BigInt   // close - prevClose
+  changePct Decimal  @db.Decimal(6, 4) // e.g. 1.2345 = 1.2345%
+
+  // Volume and value
+  volume   BigInt
+  value    BigInt  // Total traded value in paise
+  trades   Int?
+
+  // Delivery data (equity only)
+  deliveryQty BigInt?
+  deliveryPct Decimal? @db.Decimal(5, 2)
+
+  // Circuit and 52-week reference — in paise
+  upperCircuit BigInt?
+  lowerCircuit BigInt?
+  weekHigh52   BigInt?
+  weekLow52    BigInt?
+
+  createdAt DateTime @default(now())
+
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@unique([symbol, date])
+  @@index([symbol, date(sort: Desc)])
+  @@index([date(sort: Desc)])
+  @@map("daily_snapshots")
+}
+
+
+// WATCHLISTS
+
+
+model Watchlist {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  watchlistId String   @db.Uuid
+  symbol      String
+  sortOrder   Int      @default(0)
+  addedAt     DateTime @default(now())
+
+  watchlist  Watchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  instrument Instrument @relation(fields: [symbol], references: [symbol])
+
+  @@unique([watchlistId, symbol])
+  @@index([watchlistId])
+  @@map("watchlist_items")
+}
+
+
+// ALERTS
+
+
+model Alert {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String         @db.Uuid
+  symbol      String
+  condition   AlertCondition
+  targetValue Decimal        @db.Decimal(12, 2) // Threshold value for the condition
+  status      AlertStatus    @default(ACTIVE)
+  isRepeating Boolean        @default(false)
+  repeatCount Int            @default(0)        // How many times triggered so far
+  maxRepeats  Int?                               // null = unlimited
+  channels    NotificationChannel[]
+  note        String?
+  triggeredAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instrument  Instrument        @relation(fields: [symbol], references: [symbol])
+  triggerLogs AlertTriggerLog[]
+
+  @@index([userId, status])
+  @@index([symbol, status])
+  @@map("alerts")
+}
+
+model AlertTriggerLog {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alertId      String               @db.Uuid
+  triggeredAt  DateTime             @default(now())
+  triggerPrice Decimal              @db.Decimal(12, 2)
+  notified     Boolean              @default(false)
+  channel      NotificationChannel?
+  error        String?
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId])
+  @@map("alert_trigger_logs")
+}
+
+
+// GTT (Good Till Triggered) Rules
+
+
+model GttRule {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId   String         @db.Uuid
+  symbol      String
+  triggerType GttTriggerType @default(SINGLE)
+  status      GttStatus      @default(ACTIVE)
+
+  // SINGLE: only trigger1Price used. OCO: both prices used.
+  trigger1Price BigInt
+  trigger2Price BigInt?
+
+  lastPrice BigInt // LTP at time of GTT creation — used for validation
+
+  // Order template executed when rule triggers
+  orderSide  OrderSide
+  orderType  OrderType @default(LIMIT)
+  quantity   Int
+  orderPrice BigInt?   // Limit price for triggered order; null = market
+
+  triggeredAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, status])
+  @@index([symbol, status])
+  @@map("gtt_rules")
+}
+
+
+// NOTIFICATIONS
+
+
+model Notification {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String              @db.Uuid
+  channel   NotificationChannel
+  title     String
+  body      String
+  data      Json?               // Payload: orderId, symbol, alertId, etc.
+  isRead    Boolean             @default(false)
+  readAt    DateTime?
+  sentAt    DateTime?
+  failedAt  DateTime?
+  error     String?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+
+// AUDIT LOG (Append-only — never UPDATE or DELETE rows in this table)
+
+
+model AuditLog {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?     @db.Uuid
+  action     AuditAction
+  entityType String?     // "Order" | "Account" | "User" | "KycDocument"
+  entityId   String?
+  oldValue   Json?       // State before the change
+  newValue   Json?       // State after the change
+  ipAddress  String?
+  userAgent  String?
+  requestId  String?     // x-request-id for distributed tracing
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+
+// MARKET CALENDAR
+
+
+model MarketSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exchange     Exchange
+  date         DateTime @db.Date
+  isOpen       Boolean  @default(true)
+  openTime     String   // "09:15" — HH:MM
+  closeTime    String   // "15:30"
+  preOpenStart String?  // "09:00"
+  preOpenEnd   String?  // "09:08"
+  note         String?  // "Muhurat Trading" | "Early Close" | "Special Session"
+
+  @@unique([exchange, date])
+  @@index([exchange, date])
+  @@map("market_sessions")
+}
+
+model CircuitBreakerLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol      String
+  exchange    Exchange
+  level       Int      // 1 = 10%, 2 = 15%, 3 = 20%
+  direction   String   // "upper" | "lower"
+  price       BigInt   // Trigger price in paise
+  triggeredAt DateTime @default(now())
+  haltedUntil DateTime?
+  resumedAt   DateTime?
+
+  @@index([symbol, triggeredAt])
+  @@index([triggeredAt(sort: Desc)])
+  @@map("circuit_breaker_logs")
+}
+
+
