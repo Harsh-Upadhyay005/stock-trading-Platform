@@ -1,17 +1,17 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js&logoColor=white" />
-<img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js&logoColor=white" />
+<img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
-<img src="https://img.shields.io/badge/Prisma-5-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
-<img src="https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
+<img src="https://img.shields.io/badge/Prisma-7-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
+<img src="https://img.shields.io/badge/Redis-8.8-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
 <img src="https://img.shields.io/badge/TimescaleDB-2.x-FDB515?style=for-the-badge&logo=timescale&logoColor=black" />
 
 <br/><br/>
 
 # 📈 StockFlow
 
-### A production-grade, full-stack stock trading platform built with Next.js 15, PostgreSQL, and real-time market data infrastructure.
+### A production-grade, full-stack stock trading platform built with Next.js 16, PostgreSQL, and real-time market data infrastructure.
 
 <br/>
 
@@ -59,11 +59,11 @@
 
 | Layer | Technology |
 |---|---|
-| **Framework** | Next.js 15 (App Router, React Server Components) |
-| **Language** | TypeScript 5.5 |
+| **Framework** | Next.js 16 (App Router, React Server Components) |
+| **Language** | TypeScript 6 |
 | **Database** | PostgreSQL 16 + TimescaleDB 2.x |
-| **ORM** | Prisma 5 |
-| **Cache / PubSub** | Redis 7 (ioredis) |
+| **ORM** | Prisma 7 |
+| **Cache / PubSub** | Redis 8.8 (ioredis) |
 | **Auth** | NextAuth.js v5 (JWT + OAuth2) |
 | **Real-time** | Socket.io 4 on custom Next.js server |
 | **Queue** | BullMQ (order processing, alerts, notifications) |
@@ -86,14 +86,14 @@
 └────────────────────────┬───────────────────────┬────────────┘
                          │ HTTPS                  │ WSS
 ┌────────────────────────▼───────────────────────▼────────────┐
-│                   Next.js 15 Server                          │
+│                   Next.js 16 Server                          │
 │   API Route Handlers (app/api/)  ·  Socket.io Server        │
 │   NextAuth.js  ·  Zod Validation  ·  Pino Logging          │
 │   Edge Middleware: JWT Auth + Rate Limiting                  │
 └────────┬──────────────┬──────────────────┬──────────────────┘
          │              │                  │
 ┌────────▼───┐  ┌───────▼──────┐  ┌───────▼────────────────┐
-│ PostgreSQL │  │    Redis 7   │  │  BullMQ Workers         │
+│ PostgreSQL │  │    Redis 8.8   │  │  BullMQ Workers         │
 │    16      │  │              │  │  (Order · Alert ·       │
 │ TimescaleDB│  │ Cache · RateL│  │   Notification)         │
 │ Prisma ORM │  │ imiter · PubS│  └────────────────────────┘
@@ -134,7 +134,7 @@ External Feed Webhook
 
 - Node.js 20+
 - PostgreSQL 16 with TimescaleDB extension
-- Redis 7
+- Redis 8.8
 - pnpm (recommended) or npm
 
 ### 1. Clone & Install
