@@ -64,6 +64,7 @@ export type WatchlistCreateInput = z.infer<typeof WatchlistCreateSchema>
 export type WatchlistUpdateInput = z.infer<typeof WatchlistUpdateSchema>
 export type WatchlistItemInput = z.infer<typeof WatchlistItemSchema>
 export type AlertCreateInput = z.infer<typeof AlertCreateSchema>
+export type AlertUpdateInput = z.infer<typeof AlertUpdateSchema>
 export type AdminUserQueryInput = z.infer<typeof AdminUserQuerySchema>
 export type AdminUpdateUserInput = z.infer<typeof AdminUpdateUserSchema>
 export type InstrumentCreateInput = z.infer<typeof InstrumentCreateSchema>
