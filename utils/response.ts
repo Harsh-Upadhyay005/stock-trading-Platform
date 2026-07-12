@@ -1,19 +1,25 @@
 // ============================================================
-// utils/response.ts — Standardized Next.js API response helpers
+// utils/response.ts — Standardized API response helpers
 // ============================================================
 import { NextResponse } from "next/server"
-import type { ApiError, ApiSuccess, PaginationMeta } from "@/types/api"
+import type { ApiSuccess, ApiError, PaginationMeta } from "@/types/api"
 
-export function ok<T>(
-  data: T,
-  meta?: PaginationMeta,
-  status = 200
-): NextResponse<ApiSuccess<T>> {
-  return NextResponse.json({ success: true, data, ...(meta && { meta }) }, { status })
+export function ok<T>(data: T, meta?: PaginationMeta): NextResponse<ApiSuccess<T>> {
+  return NextResponse.json({
+    success: true,
+    data,
+    ...(meta && { meta }),
+  })
 }
 
 export function created<T>(data: T): NextResponse<ApiSuccess<T>> {
-  return NextResponse.json({ success: true, data }, { status: 201 })
+  return NextResponse.json(
+    {
+      success: true,
+      data,
+    },
+    { status: 201 }
+  )
 }
 
 export function noContent(): NextResponse {
@@ -21,66 +27,146 @@ export function noContent(): NextResponse {
 }
 
 export function badRequest(
-  message: string,
-  details?: Record<string, string[]>,
-  code = "BAD_REQUEST"
+  message = "Invalid request",
+  details?: Record<string, string[]>
 ): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code, message, details } },
+    {
+      success: false,
+      error: {
+        code: "BAD_REQUEST",
+        message,
+        ...(details && { details }),
+      },
+    },
     { status: 400 }
   )
 }
 
-export function unauthorized(message = "Unauthorized"): NextResponse<ApiError> {
+export function unauthorized(
+  message = "Authentication required"
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "UNAUTHORIZED", message } },
+    {
+      success: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message,
+      },
+    },
     { status: 401 }
   )
 }
 
-export function forbidden(message = "Forbidden"): NextResponse<ApiError> {
+export function forbidden(
+  code = "FORBIDDEN",
+  message = "Access denied"
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "FORBIDDEN", message } },
+    {
+      success: false,
+      error: {
+        code,
+        message,
+      },
+    },
     { status: 403 }
   )
 }
 
-export function notFound(resource = "Resource"): NextResponse<ApiError> {
+export function notFound(
+  resource = "Resource",
+  message?: string
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "NOT_FOUND", message: `${resource} not found` } },
+    {
+      success: false,
+      error: {
+        code: "NOT_FOUND",
+        message: message ?? `${resource} not found`,
+      },
+    },
     { status: 404 }
   )
 }
 
-export function conflict(message: string): NextResponse<ApiError> {
+export function conflict(message = "Resource conflict"): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "CONFLICT", message } },
+    {
+      success: false,
+      error: {
+        code: "CONFLICT",
+        message,
+      },
+    },
     { status: 409 }
   )
 }
 
-export function unprocessable(message: string, details?: Record<string, string[]>): NextResponse<ApiError> {
+export function unprocessable(
+  message = "Unprocessable entity",
+  details?: Record<string, string[]>
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "UNPROCESSABLE_ENTITY", message, details } },
+    {
+      success: false,
+      error: {
+        code: "UNPROCESSABLE_ENTITY",
+        message,
+        ...(details && { details }),
+      },
+    },
     { status: 422 }
   )
 }
 
-export function tooManyRequests(message = "Too many requests"): NextResponse<ApiError> {
+export function tooManyRequests(
+  message = "Too many requests"
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "RATE_LIMITED", message } },
+    {
+      success: false,
+      error: {
+        code: "RATE_LIMIT_EXCEEDED",
+        message,
+      },
+    },
     { status: 429 }
   )
 }
 
-export function serverError(message = "Internal server error"): NextResponse<ApiError> {
+export function serverError(
+  message = "Internal server error"
+): NextResponse<ApiError> {
   return NextResponse.json(
-    { success: false, error: { code: "INTERNAL_ERROR", message } },
+    {
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message,
+      },
+    },
     { status: 500 }
   )
 }
 
-// Pagination helper
+export function serviceUnavailable(
+  message = "Service temporarily unavailable"
+): NextResponse<ApiError> {
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code: "SERVICE_UNAVAILABLE",
+        message,
+      },
+    },
+    { status: 503 }
+  )
+}
+
+// ── Pagination Helper ─────────────────────────────────────
+
 export function buildPaginationMeta(
   total: number,
   page: number,
@@ -88,22 +174,11 @@ export function buildPaginationMeta(
 ): PaginationMeta {
   const totalPages = Math.ceil(total / limit)
   return {
-    total,
     page,
     limit,
+    total,
     totalPages,
     hasNext: page < totalPages,
     hasPrev: page > 1,
   }
-}
-
-// Parse pagination from searchParams
-export function parsePagination(searchParams: URLSearchParams): {
-  page: number
-  limit: number
-  skip: number
-} {
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20")))
-  return { page, limit, skip: (page - 1) * limit }
 }
