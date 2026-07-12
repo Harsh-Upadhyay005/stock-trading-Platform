@@ -7,7 +7,7 @@ import { emitOrderUpdate } from "@/lib/socket"
 import { logger } from "@/utils/logger"
 import type { CreateOrderInput, UpdateOrderInput, OrderQueryInput } from "@/validators/order.schema"
 import type { OrderWithDetails } from "@/types/order"
-import type { Prisma } from "../../generated/prisma"
+import type { Prisma } from "../generated/prisma"
 
 export class OrderService {
   // ── Create Order ──────────────────────────────────────────
@@ -83,7 +83,7 @@ export class OrderService {
     })
 
     // 6. Enqueue for async processing
-    await orderQueue.add("process", {
+    await orderQueue.add("process" as never, {
       orderId: order.id,
       accountId: input.accountId,
       userId,
