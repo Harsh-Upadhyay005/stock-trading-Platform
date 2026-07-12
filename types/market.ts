@@ -1,7 +1,7 @@
 // ============================================================
 // types/market.ts
 // ============================================================
-import type { AssetClass, MarketStatus } from "../../generated/prisma"
+import type { AssetClass, MarketStatus } from "../generated/prisma"
 
 export type QuoteData = {
   symbolId: string
