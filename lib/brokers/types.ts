@@ -1,6 +1,6 @@
-// ============================================================
+
 // lib/brokers/types.ts — Broker adapter interface
-// ============================================================
+
 
 export interface BrokerAdapter {
   // Connection
