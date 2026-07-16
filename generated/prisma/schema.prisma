@@ -1,8 +1,8 @@
-// ============================================================
+
 // STOCK TRADING PLATFORM — PRODUCTION PRISMA SCHEMA
 // Prisma v7.8.0 | PostgreSQL
 // Auth: Clerk (manages sessions, passwords, OAuth, MFA, devices)
-// ============================================================
+
 
 generator client {
   provider        = "prisma-client-js"
@@ -14,9 +14,9 @@ datasource db {
   provider = "postgresql"
 }
 
-// ============================================================
+
 // ENUMS
-// ============================================================
+
 
 enum UserRole {
   INVESTOR
@@ -203,9 +203,9 @@ enum RiskLevel {
   SPECULATIVE
 }
 
-// ============================================================
+
 // USER
-// ============================================================
+
 // Clerk owns: passwords, email/phone verification, OAuth accounts,
 // sessions, devices, MFA (TOTP + backup codes), login history.
 //
@@ -213,7 +213,7 @@ enum RiskLevel {
 // The primary key is your internal DB id (cuid).
 // clerkId is the stable Clerk user ID ("user_xxxxx") used to
 // link Clerk webhook events and session tokens to this record.
-// ============================================================
+
 
 model User {
   id           String     @id @default(cuid())
@@ -255,11 +255,11 @@ model User {
   @@map("users")
 }
 
-// ============================================================
+
 // USER PROFILE
 // Business/compliance data YOUR platform collects post-signup.
 // Not available in Clerk — stored here.
-// ============================================================
+
 
 model UserProfile {
   id               String    @id @default(cuid())
@@ -287,11 +287,11 @@ model UserProfile {
   @@map("user_profiles")
 }
 
-// ============================================================
+
 // API KEYS  (programmatic access — separate from Clerk sessions)
 // Clerk manages browser/mobile sessions. These keys are for
 // server-to-server or algorithmic trading integrations.
-// ============================================================
+
 
 model ApiKey {
   id          String    @id @default(cuid())
@@ -312,9 +312,9 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// ============================================================
+
 // KYC / AML
-// ============================================================
+
 
 model KYCRecord {
   id              String    @id @default(cuid())
@@ -359,9 +359,9 @@ model KYCDocument {
   @@map("kyc_documents")
 }
 
-// ============================================================
+
 // RISK PROFILE
-// ============================================================
+
 
 model RiskProfile {
   id                  String       @id @default(cuid())
@@ -383,9 +383,9 @@ model RiskProfile {
   @@map("risk_profiles")
 }
 
-// ============================================================
+
 // TRADING ACCOUNTS & PORTFOLIO
-// ============================================================
+
 
 model TradingAccount {
   id                  String        @id @default(cuid())
@@ -460,9 +460,9 @@ model PortfolioSnapshot {
   @@map("portfolio_snapshots")
 }
 
-// ============================================================
+
 // MARKET DATA
-// ============================================================
+
 
 model Exchange {
   id        String   @id @default(cuid())
@@ -679,9 +679,9 @@ model OptionContract {
   @@map("option_contracts")
 }
 
-// ============================================================
+
 // ORDERS
-// ============================================================
+
 
 model Order {
   id                String        @id @default(cuid())
@@ -748,9 +748,9 @@ model OrderFill {
   @@map("order_fills")
 }
 
-// ============================================================
+
 // TRANSACTIONS & LEDGER
-// ============================================================
+
 
 model Transaction {
   id            String            @id @default(cuid())
@@ -784,9 +784,9 @@ model Transaction {
   @@map("transactions")
 }
 
-// ============================================================
+
 // BANK ACCOUNTS & PAYMENTS
-// ============================================================
+
 
 model BankAccount {
   id            String    @id @default(cuid())
@@ -811,9 +811,9 @@ model BankAccount {
   @@map("bank_accounts")
 }
 
-// ============================================================
+
 // WATCHLISTS & ALERTS
-// ============================================================
+
 
 model Watchlist {
   id          String              @id @default(cuid())
@@ -869,9 +869,9 @@ model PriceAlert {
   @@map("price_alerts")
 }
 
-// ============================================================
+
 // NOTIFICATIONS
-// ============================================================
+
 
 model Notification {
   id        String              @id @default(cuid())
@@ -908,9 +908,9 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
-// ============================================================
+
 // AUDIT & COMPLIANCE
-// ============================================================
+
 
 model AuditLog {
   id             String   @id @default(cuid())
@@ -936,3 +936,5 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+
