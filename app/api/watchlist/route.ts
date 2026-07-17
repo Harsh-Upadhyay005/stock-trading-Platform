@@ -3,91 +3,62 @@
 // ============================================================
 import { type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { db } from "@/lib/db"
-import { WatchlistCreateSchema, WatchlistItemSchema } from "@/validators/user.schema"
+import { watchlistService } from "@/services/watchlist.service"
+import { ServiceError } from "@/services/order.service"
+import { CreateWatchlistSchema, WatchlistQuerySchema } from "@/validators/watchlist.schema"
 import {
   ok, created, badRequest, unauthorized, forbidden,
-  conflict, serverError,
+  conflict, serverError, buildPaginationMeta,
 } from "@/utils/response"
+import { withRateLimit } from "@/utils/rate-limit-middleware"
 import { logger } from "@/utils/logger"
 
 // ── GET /api/watchlist ────────────────────────────────────────
-export async function GET(_req: NextRequest) {
-  try {
-    const user = await requireAuth()
+export const GET = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      const user = await requireAuth()
 
-    const watchlists = await db.watchlist.findMany({
-      where: { userId: user.id },
-      include: {
-        items: {
-          include: {
-            symbol: {
-              select: {
-                id: true, ticker: true, name: true,
-                assetClass: true, currency: true, logoUrl: true,
-                quote: { select: { lastPrice: true, changePct: true, marketStatus: true } },
-              },
-            },
-          },
-          orderBy: { sortOrder: "asc" },
-        },
-        _count: { select: { items: true } },
-      },
-      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-    })
+      const params = Object.fromEntries(req.nextUrl.searchParams)
+      const parsed = WatchlistQuerySchema.safeParse(params)
 
-    return ok(watchlists)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "GET /api/watchlist error")
-    return serverError()
-  }
-}
+      if (!parsed.success) {
+        return badRequest("Invalid query parameters", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      }
+
+      const { watchlists, total } = await watchlistService.listWatchlists(user.id, parsed.data)
+      const meta = buildPaginationMeta(total, parsed.data.page, parsed.data.limit)
+
+      return ok(watchlists, meta)
+    } catch (err) {
+      if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
+      logger.error({ err }, "GET /api/watchlist error")
+      return serverError()
+    }
+  },
+  { preset: "authenticated" }
+)
 
 // ── POST /api/watchlist ───────────────────────────────────────
-export async function POST(req: NextRequest) {
-  try {
-    const user = await requireAuth()
-    const body = await req.json()
+export const POST = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      const user = await requireAuth()
+      const body = await req.json()
+      const parsed = CreateWatchlistSchema.safeParse(body)
 
-    // Allow creating watchlist with optional initial symbols
-    const parsed = WatchlistCreateSchema.extend({
-      symbols: WatchlistItemSchema.array().optional(),
-    }).safeParse(body)
+      if (!parsed.success) {
+        return badRequest("Validation failed", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      }
 
-    if (!parsed.success) {
-      return badRequest("Validation failed", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      const watchlist = await watchlistService.createWatchlist(user.id, parsed.data)
+      return created(watchlist)
+    } catch (err) {
+      if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
+      if (err instanceof ServiceError && err.status === 409) return conflict(err.message)
+      logger.error({ err }, "POST /api/watchlist error")
+      return serverError()
     }
-
-    const { symbols, ...watchlistData } = parsed.data
-
-    // Enforce max 20 watchlists per user
-    const count = await db.watchlist.count({ where: { userId: user.id } })
-    if (count >= 20) {
-      return conflict("Maximum of 20 watchlists allowed per account")
-    }
-
-    const watchlist = await db.watchlist.create({
-      data: {
-        ...watchlistData,
-        userId: user.id,
-        items: symbols
-          ? {
-              create: symbols.map((s, i) => ({
-                symbolId: s.symbolId,
-                notes: s.notes,
-                sortOrder: s.sortOrder ?? i,
-              })),
-            }
-          : undefined,
-      },
-      include: { items: true, _count: { select: { items: true } } },
-    })
-
-    return created(watchlist)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "POST /api/watchlist error")
-    return serverError()
-  }
-}
+  },
+  { preset: "authenticated" }
+)
