@@ -4,19 +4,30 @@
 import { type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { portfolioService } from "@/services/portfolio.service"
-import { ok, unauthorized, forbidden, serverError } from "@/utils/response"
+import { PortfolioQuerySchema } from "@/validators/portfolio.schema"
+import { ok, badRequest, unauthorized, forbidden, serverError } from "@/utils/response"
+import { withRateLimit } from "@/utils/rate-limit-middleware"
 import { logger } from "@/utils/logger"
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireAuth()
-    const accountId = req.nextUrl.searchParams.get("accountId") ?? undefined
+export const GET = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      const user = await requireAuth()
+      
+      const params = Object.fromEntries(req.nextUrl.searchParams)
+      const parsed = PortfolioQuerySchema.safeParse(params)
 
-    const summary = await portfolioService.getSummary(user.id, accountId)
-    return ok(summary)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "GET /api/portfolio error")
-    return serverError()
-  }
-}
+      if (!parsed.success) {
+        return badRequest("Invalid query parameters", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      }
+
+      const summary = await portfolioService.getSummary(user.id, parsed.data.accountId)
+      return ok(summary)
+    } catch (err) {
+      if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
+      logger.error({ err }, "GET /api/portfolio error")
+      return serverError()
+    }
+  },
+  { preset: "authenticated" }
+)
