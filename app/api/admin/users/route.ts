@@ -1,108 +1,46 @@
 // ============================================================
-// app/api/admin/users/route.ts — Admin user management
+// app/api/admin/users/route.ts — GET (list users)
 // ============================================================
 import { type NextRequest } from "next/server"
-import { requireRole, AuthError } from "@/lib/auth"
-import { db } from "@/lib/db"
-import { AdminUserQuerySchema, AdminUpdateUserSchema } from "@/validators/user.schema"
+import { requireAdmin, AuthError } from "@/lib/auth"
+import { adminService } from "@/services/admin.service"
+import { AdminUserQuerySchema } from "@/validators/admin.schema"
 import {
-  ok, badRequest, unauthorized, forbidden, notFound,
-  serverError, buildPaginationMeta,
+  ok,
+  badRequest,
+  unauthorized,
+  forbidden,
+  serverError,
+  buildPaginationMeta,
 } from "@/utils/response"
+import { withRateLimit } from "@/utils/rate-limit-middleware"
 import { logger } from "@/utils/logger"
 
-// ── GET /api/admin/users ──────────────────────────────────────
-export async function GET(req: NextRequest) {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      await requireAdmin()
 
-    const params = Object.fromEntries(req.nextUrl.searchParams)
-    const parsed = AdminUserQuerySchema.safeParse(params)
+      const params = Object.fromEntries(req.nextUrl.searchParams)
+      const parsed = AdminUserQuerySchema.safeParse(params)
 
-    if (!parsed.success) {
-      return badRequest("Invalid query", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      if (!parsed.success) {
+        return badRequest(
+          "Invalid query parameters",
+          parsed.error.flatten().fieldErrors as Record<string, string[]>
+        )
+      }
+
+      const { users, total } = await adminService.listUsers(parsed.data)
+      const meta = buildPaginationMeta(total, parsed.data.page, parsed.data.limit)
+
+      return ok(users, meta)
+    } catch (err) {
+      if (err instanceof AuthError)
+        return err.status === 401 ? unauthorized() : forbidden(err.code)
+      logger.error({ err }, "GET /api/admin/users error")
+      return serverError()
     }
-
-    const { search, role, status, kycStatus, page, limit, sortBy, sortOrder } = parsed.data
-
-    const where = {
-      ...(role && { role }),
-      ...(status && { status }),
-      ...(kycStatus && { kycRecord: { status: kycStatus } }),
-      ...(search && {
-        OR: [
-          { email: { contains: search, mode: "insensitive" as const } },
-          { firstName: { contains: search, mode: "insensitive" as const } },
-          { lastName: { contains: search, mode: "insensitive" as const } },
-        ],
-      }),
-      deletedAt: null,
-    }
-
-    const [users, total] = await Promise.all([
-      db.user.findMany({
-        where,
-        select: {
-          id: true, clerkId: true, email: true, firstName: true, lastName: true,
-          role: true, status: true, createdAt: true,
-          kycRecord: { select: { status: true, level: true } },
-          tradingAccounts: { select: { id: true, type: true, status: true } },
-          _count: { select: { tradingAccounts: true } },
-        },
-        orderBy: { [sortBy]: sortOrder },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.user.count({ where }),
-    ])
-
-    const meta = buildPaginationMeta(total, page, limit)
-    return ok(users, meta)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "GET /api/admin/users error")
-    return serverError()
-  }
-}
-
-// ── PATCH /api/admin/users?userId=xxx ────────────────────────
-export async function PATCH(req: NextRequest) {
-  try {
-    const admin = await requireRole("ADMIN")
-
-    const userId = req.nextUrl.searchParams.get("userId")
-    if (!userId) return badRequest("userId query parameter required")
-
-    const body = await req.json()
-    const parsed = AdminUpdateUserSchema.safeParse(body)
-    if (!parsed.success) {
-      return badRequest("Validation failed", parsed.error.flatten().fieldErrors as Record<string, string[]>)
-    }
-
-    const user = await db.user.findUnique({ where: { id: userId } })
-    if (!user) return notFound("User")
-
-    const updated = await db.user.update({
-      where: { id: userId },
-      data: parsed.data,
-      select: { id: true, email: true, role: true, status: true, updatedAt: true },
-    })
-
-    await db.auditLog.create({
-      data: {
-        userId: admin.id,
-        action: "ADMIN_USER_UPDATED",
-        resource: "User",
-        resourceId: userId,
-        oldData: { role: user.role, status: user.status },
-        newData: parsed.data,
-      },
-    })
-
-    return ok(updated)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "PATCH /api/admin/users error")
-    return serverError()
-  }
-}
+  },
+  { preset: "admin" }
+)
