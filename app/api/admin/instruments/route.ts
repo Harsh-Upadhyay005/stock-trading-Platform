@@ -1,74 +1,83 @@
 // ============================================================
-// app/api/admin/instruments/route.ts — Instrument management
+// app/api/admin/instruments/route.ts — GET / POST
 // ============================================================
 import { type NextRequest } from "next/server"
-import { requireRole, AuthError } from "@/lib/auth"
-import { db } from "@/lib/db"
-import { InstrumentCreateSchema } from "@/validators/user.schema"
+import { requireAdmin, AuthError } from "@/lib/auth"
+import { adminService } from "@/services/admin.service"
+import { ServiceError } from "@/services/order.service"
 import {
-  ok, created, badRequest, unauthorized, forbidden, conflict, serverError,
+  CreateInstrumentSchema,
+  InstrumentQuerySchema,
+} from "@/validators/admin.schema"
+import {
+  ok,
+  created,
+  badRequest,
+  unauthorized,
+  forbidden,
+  notFound,
+  conflict,
+  serverError,
+  buildPaginationMeta,
 } from "@/utils/response"
+import { withRateLimit } from "@/utils/rate-limit-middleware"
 import { logger } from "@/utils/logger"
 
-// ── GET /api/admin/instruments ────────────────────────────────
-export async function GET(req: NextRequest) {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      await requireAdmin()
 
-    const page = parseInt(req.nextUrl.searchParams.get("page") ?? "1")
-    const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50")
-    const search = req.nextUrl.searchParams.get("search") ?? undefined
+      const params = Object.fromEntries(req.nextUrl.searchParams)
+      const parsed = InstrumentQuerySchema.safeParse(params)
 
-    const symbols = await db.symbol.findMany({
-      where: search
-        ? {
-            OR: [
-              { ticker: { contains: search, mode: "insensitive" } },
-              { name: { contains: search, mode: "insensitive" } },
-              { isin: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : undefined,
-      include: { exchange: { select: { code: true, name: true } } },
-      orderBy: { ticker: "asc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    })
+      if (!parsed.success) {
+        return badRequest(
+          "Invalid query parameters",
+          parsed.error.flatten().fieldErrors as Record<string, string[]>
+        )
+      }
 
-    return ok(symbols)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "GET /api/admin/instruments error")
-    return serverError()
-  }
-}
+      const { instruments, total } = await adminService.listInstruments(parsed.data)
+      const meta = buildPaginationMeta(total, parsed.data.page, parsed.data.limit)
 
-// ── POST /api/admin/instruments ───────────────────────────────
-export async function POST(req: NextRequest) {
-  try {
-    await requireRole("ADMIN")
-
-    const body = await req.json()
-    const parsed = InstrumentCreateSchema.safeParse(body)
-
-    if (!parsed.success) {
-      return badRequest("Validation failed", parsed.error.flatten().fieldErrors as Record<string, string[]>)
+      return ok(instruments, meta)
+    } catch (err) {
+      if (err instanceof AuthError)
+        return err.status === 401 ? unauthorized() : forbidden(err.code)
+      logger.error({ err }, "GET /api/admin/instruments error")
+      return serverError()
     }
+  },
+  { preset: "admin" }
+)
 
-    const existing = await db.symbol.findUnique({
-      where: { ticker_exchangeId: { ticker: parsed.data.ticker, exchangeId: parsed.data.exchangeId } },
-    })
-    if (existing) return conflict(`${parsed.data.ticker} already listed on this exchange`)
+export const POST = withRateLimit(
+  async (req: NextRequest) => {
+    try {
+      const admin = await requireAdmin()
+      const body = await req.json()
+      const parsed = CreateInstrumentSchema.safeParse(body)
 
-    const symbol = await db.symbol.create({
-      data: parsed.data,
-      include: { exchange: { select: { code: true, name: true } } },
-    })
+      if (!parsed.success) {
+        return badRequest(
+          "Validation failed",
+          parsed.error.flatten().fieldErrors as Record<string, string[]>
+        )
+      }
 
-    return created(symbol)
-  } catch (err) {
-    if (err instanceof AuthError) return err.status === 401 ? unauthorized() : forbidden(err.code)
-    logger.error({ err }, "POST /api/admin/instruments error")
-    return serverError()
-  }
-}
+      const instrument = await adminService.createInstrument(admin.id, parsed.data)
+      return created(instrument)
+    } catch (err) {
+      if (err instanceof AuthError)
+        return err.status === 401 ? unauthorized() : forbidden(err.code)
+      if (err instanceof ServiceError) {
+        if (err.status === 404) return notFound(err.code)
+        if (err.status === 409) return conflict(err.message)
+      }
+      logger.error({ err }, "POST /api/admin/instruments error")
+      return serverError()
+    }
+  },
+  { preset: "admin" }
+)
