@@ -1,83 +1,145 @@
-// ============================================================
-// app/api/admin/instruments/route.ts — GET / POST
-// ============================================================
-import { type NextRequest } from "next/server"
-import { requireAdmin, AuthError } from "@/lib/auth"
-import { adminService } from "@/services/admin.service"
-import { ServiceError } from "@/services/order.service"
-import {
-  CreateInstrumentSchema,
-  InstrumentQuerySchema,
-} from "@/validators/admin.schema"
-import {
-  ok,
-  created,
-  badRequest,
-  unauthorized,
-  forbidden,
-  notFound,
-  conflict,
-  serverError,
-  buildPaginationMeta,
-} from "@/utils/response"
-import { withRateLimit } from "@/utils/rate-limit-middleware"
-import { logger } from "@/utils/logger"
+import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
+import prisma from '@/lib/prisma'
 
-export const GET = withRateLimit(
-  async (req: NextRequest) => {
-    try {
-      await requireAdmin()
-
-      const params = Object.fromEntries(req.nextUrl.searchParams)
-      const parsed = InstrumentQuerySchema.safeParse(params)
-
-      if (!parsed.success) {
-        return badRequest(
-          "Invalid query parameters",
-          parsed.error.flatten().fieldErrors as Record<string, string[]>
-        )
-      }
-
-      const { instruments, total } = await adminService.listInstruments(parsed.data)
-      const meta = buildPaginationMeta(total, parsed.data.page, parsed.data.limit)
-
-      return ok(instruments, meta)
-    } catch (err) {
-      if (err instanceof AuthError)
-        return err.status === 401 ? unauthorized() : forbidden(err.code)
-      logger.error({ err }, "GET /api/admin/instruments error")
-      return serverError()
+export async function GET(request: Request) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-  },
-  { preset: "admin" }
-)
 
-export const POST = withRateLimit(
-  async (req: NextRequest) => {
-    try {
-      const admin = await requireAdmin()
-      const body = await req.json()
-      const parsed = CreateInstrumentSchema.safeParse(body)
+    // Check if user is admin
+    const adminUser = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      select: { role: true },
+    })
 
-      if (!parsed.success) {
-        return badRequest(
-          "Validation failed",
-          parsed.error.flatten().fieldErrors as Record<string, string[]>
-        )
-      }
-
-      const instrument = await adminService.createInstrument(admin.id, parsed.data)
-      return created(instrument)
-    } catch (err) {
-      if (err instanceof AuthError)
-        return err.status === 401 ? unauthorized() : forbidden(err.code)
-      if (err instanceof ServiceError) {
-        if (err.status === 404) return notFound(err.code)
-        if (err.status === 409) return conflict(err.message)
-      }
-      logger.error({ err }, "POST /api/admin/instruments error")
-      return serverError()
+    if (adminUser?.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-  },
-  { preset: "admin" }
-)
+
+    const { searchParams } = new URL(request.url)
+    const segment = searchParams.get('segment')
+    const exchange = searchParams.get('exchange')
+    const search = searchParams.get('search')
+    const tradable = searchParams.get('tradable')
+
+    // Build query filters
+    const where: any = {}
+    
+    if (segment) {
+      where.segment = segment
+    }
+    
+    if (exchange) {
+      where.exchange = exchange
+    }
+    
+    if (tradable) {
+      where.tradable = tradable === 'true'
+    }
+    
+    if (search) {
+      where.OR = [
+        { symbol: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { isin: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+
+    const instruments = await prisma.instrument.findMany({
+      where,
+      select: {
+        id: true,
+        symbol: true,
+        name: true,
+        exchange: true,
+        segment: true,
+        isin: true,
+        lotSize: true,
+        tickSize: true,
+        tradable: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        symbol: 'asc',
+      },
+    })
+
+    return NextResponse.json({
+      instruments: instruments.map(i => ({
+        ...i,
+        lotSize: i.lotSize,
+        tickSize: i.tickSize.toNumber(),
+      })),
+      total: instruments.length,
+    })
+  } catch (error) {
+    console.error('Admin instruments fetch error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch instruments' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user is admin
+    const adminUser = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      select: { role: true },
+    })
+
+    if (adminUser?.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { instrumentId, action } = await request.json()
+
+    if (!instrumentId || !action) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    let updateData: any = {}
+
+    switch (action) {
+      case 'ENABLE_TRADING':
+        updateData = { tradable: true }
+        break
+      case 'DISABLE_TRADING':
+        updateData = { tradable: false }
+        break
+      default:
+        return NextResponse.json(
+          { error: 'Invalid action' },
+          { status: 400 }
+        )
+    }
+
+    const updatedInstrument = await prisma.instrument.update({
+      where: { id: instrumentId },
+      data: updateData,
+    })
+
+    return NextResponse.json({
+      message: 'Instrument updated successfully',
+      instrument: updatedInstrument,
+    })
+  } catch (error) {
+    console.error('Admin instrument update error:', error)
+    return NextResponse.json(
+      { error: 'Failed to update instrument' },
+      { status: 500 }
+    )
+  }
+}
