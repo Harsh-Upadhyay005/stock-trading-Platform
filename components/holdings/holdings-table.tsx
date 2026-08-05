@@ -14,87 +14,19 @@ import {
 } from "@/components/ui/table"
 import { formatCurrency, formatPercent } from "@/lib/utils"
 import { ChevronDown, ChevronUp, Search, TrendingUp, X } from "lucide-react"
+import { useHoldings } from "@/lib/hooks/use-queries"
+import { TableSkeleton } from "@/components/loading/table-skeleton"
+import { ErrorMessage } from "@/components/error/error-message"
 
 interface HoldingsTableProps {
   userId: string
   searchParams: any
 }
 
-// Mock data
-const holdings = [
-  {
-    symbol: "AAPL",
-    name: "Apple Inc.",
-    quantity: 120,
-    avgCost: 15375,
-    currentPrice: 18450,
-    marketValue: 2214000,
-    totalReturn: 369000,
-    totalReturnPercent: 20.0,
-    todayReturn: 52560,
-    todayReturnPercent: 2.43,
-    weight: 44.28,
-    sparkline: "▁▂▃▅▄▃▅▆▇",
-  },
-  {
-    symbol: "TSLA",
-    name: "Tesla Inc.",
-    quantity: 50,
-    avgCost: 14800,
-    currentPrice: 15200,
-    marketValue: 760000,
-    totalReturn: 20000,
-    totalReturnPercent: 2.70,
-    todayReturn: -9120,
-    todayReturnPercent: -1.18,
-    weight: 15.2,
-    sparkline: "▅▄▃▂▁▂▃▄",
-  },
-  {
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    quantity: 25,
-    avgCost: 2750,
-    currentPrice: 2800,
-    marketValue: 70000,
-    totalReturn: 1250,
-    totalReturnPercent: 1.82,
-    todayReturn: 630,
-    todayReturnPercent: 0.91,
-    weight: 1.4,
-    sparkline: "▂▃▄▅▆▅▄▃",
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft Corp.",
-    quantity: 100,
-    avgCost: 328,
-    currentPrice: 320,
-    marketValue: 32000,
-    totalReturn: -800,
-    totalReturnPercent: -2.44,
-    todayReturn: 320,
-    todayReturnPercent: 1.01,
-    weight: 0.64,
-    sparkline: "▅▆▇▆▅▄▃▂",
-  },
-  {
-    symbol: "AMZN",
-    name: "Amazon.com Inc.",
-    quantity: 30,
-    avgCost: 3300,
-    currentPrice: 3450,
-    marketValue: 103500,
-    totalReturn: 4500,
-    totalReturnPercent: 4.55,
-    todayReturn: 3105,
-    todayReturnPercent: 3.09,
-    weight: 2.07,
-    sparkline: "▂▂▃▄▅▅▆▇",
-  },
-]
-
 export function HoldingsTable({ userId, searchParams }: HoldingsTableProps) {
+  // Fetch holdings from API
+  const { data: holdings = [], isLoading, error } = useHoldings(userId)
+  
   const [sortColumn, setSortColumn] = useState<string>("marketValue")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [searchQuery, setSearchQuery] = useState("")
@@ -109,13 +41,27 @@ export function HoldingsTable({ userId, searchParams }: HoldingsTableProps) {
     }
   }
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <Card className="p-6">
+        <TableSkeleton rows={5} />
+      </Card>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return <ErrorMessage error={error} />
+  }
+
   const filteredHoldings = holdings.filter(
-    (h) =>
+    (h: any) =>
       h.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
       h.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const sortedHoldings = [...filteredHoldings].sort((a, b) => {
+  const sortedHoldings = [...filteredHoldings].sort((a: any, b: any) => {
     const aVal = a[sortColumn as keyof typeof a]
     const bVal = b[sortColumn as keyof typeof b]
     const multiplier = sortDirection === "asc" ? 1 : -1
