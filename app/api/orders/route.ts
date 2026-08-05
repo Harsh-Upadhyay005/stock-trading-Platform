@@ -57,7 +57,7 @@ export const POST = withRateLimit(
       const order = await orderService.createOrder(user.id, parsed.data)
 
       // Audit log
-      const sessionId = await getSessionId()
+      const sessionId = getSessionId(req)
       await db.auditLog.create({
         data: {
           userId: user.id,
