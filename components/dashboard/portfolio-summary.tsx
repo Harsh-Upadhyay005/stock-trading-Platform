@@ -9,15 +9,36 @@ interface PortfolioSummaryProps {
 }
 
 async function getPortfolioData(userId: string) {
-  // Mock data for testing
-  return {
-    cash: 250000,
-    invested: 1000000,
-    totalValue: 1245680,
-    todayReturn: 23450,
-    todayReturnPercent: 1.92,
-    totalReturn: 245680,
-    totalReturnPercent: 24.57,
+  try {
+    // Call the real API endpoint
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/portfolio/summary?accountId=${userId}`,
+      {
+        cache: 'no-store', // Always fetch fresh data
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch portfolio data')
+    }
+
+    const data = await response.json()
+    return data.summary || data || {}
+  } catch (error) {
+    console.error('Error fetching portfolio data:', error)
+    // Return default values on error
+    return {
+      cash: 0,
+      invested: 0,
+      totalValue: 0,
+      todayReturn: 0,
+      todayReturnPercent: 0,
+      totalReturn: 0,
+      totalReturnPercent: 0,
+    }
   }
 }
 
