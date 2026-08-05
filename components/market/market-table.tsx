@@ -19,63 +19,79 @@ interface MarketTableProps {
   searchParams: any
 }
 
-// Mock data
-const stocks = [
-  {
-    symbol: "AAPL",
-    name: "Apple Inc.",
-    price: 18450,
-    change: 425,
-    changePercent: 2.36,
-    volume: 12500000,
-    marketCap: 2850000000000,
-    sparkline: "▁▂▃▅▄▃▅",
-  },
-  {
-    symbol: "TSLA",
-    name: "Tesla, Inc.",
-    price: 15200,
-    change: -185,
-    changePercent: -1.20,
-    volume: 8200000,
-    marketCap: 750000000000,
-    sparkline: "▅▄▃▂▁▂▃",
-  },
-  {
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    price: 2800,
-    change: 24,
-    changePercent: 0.85,
-    volume: 5100000,
-    marketCap: 1800000000000,
-    sparkline: "▂▃▄▅▆▅▄",
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft Corp.",
-    price: 320,
-    change: 4.5,
-    changePercent: 1.42,
-    volume: 9800000,
-    marketCap: 2400000000000,
-    sparkline: "▃▄▅▆▇▆▅",
-  },
-  {
-    symbol: "AMZN",
-    name: "Amazon.com Inc.",
-    price: 3450,
-    change: 105,
-    changePercent: 3.12,
-    volume: 6700000,
-    marketCap: 1700000000000,
-    sparkline: "▂▂▃▄▅▆▇",
-  },
-]
-
+// Get stocks from API or fallback to mock
 async function getStocks(filters: any) {
-  // Mock - return all stocks
-  return stocks
+  try {
+    const params = new URLSearchParams()
+    if (filters.search) params.append('search', filters.search)
+    if (filters.sector) params.append('sector', filters.sector)
+    
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/market/quotes?${params}`,
+      {
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    )
+    if (!response.ok) throw new Error('Failed to fetch stocks')
+    const data = await response.json()
+    return data.result || []
+  } catch (error) {
+    console.error('Error fetching stocks:', error)
+    // Fallback to mock data
+    return [
+      {
+        symbol: "AAPL",
+        name: "Apple Inc.",
+        price: 18450,
+        change: 425,
+        changePercent: 2.36,
+        volume: 12500000,
+        marketCap: 2850000000000,
+        sparkline: "▁▂▃▅▄▃▅",
+      },
+      {
+        symbol: "TSLA",
+        name: "Tesla, Inc.",
+        price: 15200,
+        change: -185,
+        changePercent: -1.20,
+        volume: 8200000,
+        marketCap: 750000000000,
+        sparkline: "▅▄▃▂▁▂▃",
+      },
+      {
+        symbol: "GOOGL",
+        name: "Alphabet Inc.",
+        price: 2800,
+        change: 24,
+        changePercent: 0.85,
+        volume: 5100000,
+        marketCap: 1800000000000,
+        sparkline: "▂▃▄▅▆▅▄",
+      },
+      {
+        symbol: "MSFT",
+        name: "Microsoft Corp.",
+        price: 320,
+        change: 4.5,
+        changePercent: 1.42,
+        volume: 9800000,
+        marketCap: 2400000000000,
+        sparkline: "▃▄▅▆▇▆▅",
+      },
+      {
+        symbol: "AMZN",
+        name: "Amazon.com Inc.",
+        price: 3450,
+        change: 105,
+        changePercent: 3.12,
+        volume: 6700000,
+        marketCap: 1700000000000,
+        sparkline: "▂▂▃▄▅▆▇",
+      },
+    ]
+  }
 }
 
 export async function MarketTable({ userId, activeTab, searchParams }: MarketTableProps) {

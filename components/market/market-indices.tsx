@@ -1,14 +1,33 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { formatCurrency, formatPercent } from "@/lib/utils"
 
-const indices = [
-  { name: "NIFTY 50", value: 19234.50, change: 152.30, changePercent: 0.80 },
-  { name: "SENSEX", value: 64890.25, change: 412.50, changePercent: 0.64 },
-  { name: "S&P 500", value: 4567.80, change: 23.40, changePercent: 0.51 },
-  { name: "DOW JONES", value: 34567.90, change: 156.70, changePercent: 0.45 },
-]
+async function getIndices() {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/market/indices`,
+      {
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    )
+    if (!response.ok) throw new Error('Failed to fetch indices')
+    const data = await response.json()
+    return data.result || []
+  } catch (error) {
+    console.error('Error fetching indices:', error)
+    // Fallback to mock data
+    return [
+      { name: "NIFTY 50", value: 19234.50, change: 152.30, changePercent: 0.80 },
+      { name: "SENSEX", value: 64890.25, change: 412.50, changePercent: 0.64 },
+      { name: "S&P 500", value: 4567.80, change: 23.40, changePercent: 0.51 },
+      { name: "DOW JONES", value: 34567.90, change: 156.70, changePercent: 0.45 },
+    ]
+  }
+}
 
 export async function MarketIndices() {
+  const indices = await getIndices()
+  
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
       {indices.map((index) => (
