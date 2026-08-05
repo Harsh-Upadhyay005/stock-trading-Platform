@@ -3,6 +3,7 @@
 // ============================================================
 import { auth as clerkAuth, currentUser } from "@clerk/nextjs/server"
 import { db } from "./db"
+import { NextRequest } from "next/server"
 
 export class AuthError extends Error {
   constructor(
@@ -99,3 +100,56 @@ export async function getOptionalAuth() {
     return null
   }
 }
+
+/**
+ * Extract session ID from the Next.js request
+ * Used for rate limiting and session tracking
+ * 
+ * Priority:
+ * 1. Clerk session ID (from authenticated user)
+ * 2. Client IP address (for anonymous users)
+ * 3. User-Agent hash (fallback)
+ * 
+ * @param req - Next.js request object
+ * @returns Session identifier string
+ */
+export function getSessionId(req: NextRequest): string {
+  // Try to get Clerk session ID from cookie
+  const clerkSessionCookie = req.cookies.get('__session')?.value || 
+                             req.cookies.get('__clerk_db_jwt')?.value
+
+  if (clerkSessionCookie) {
+    return `clerk:${clerkSessionCookie.substring(0, 32)}`
+  }
+
+  // Fallback to IP address
+  const forwarded = req.headers.get('x-forwarded-for')
+  const realIp = req.headers.get('x-real-ip')
+  const ip = forwarded?.split(',')[0] || realIp || req.ip || 'unknown'
+
+  if (ip && ip !== 'unknown') {
+    return `ip:${ip}`
+  }
+
+  // Last resort: use User-Agent hash
+  const userAgent = req.headers.get('user-agent') || 'unknown'
+  const hash = simpleHash(userAgent)
+  
+  return `ua:${hash}`
+}
+
+/**
+ * Simple hash function for generating session ID from User-Agent
+ * @param str - String to hash
+ * @returns Hash string
+ */
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(36)
+}
+
