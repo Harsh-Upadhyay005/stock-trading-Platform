@@ -31,7 +31,7 @@ const menuItems = [
     title: "MENU",
     items: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-      { icon: TrendingUp, label: "Trade", href: "/trade" },
+      { icon: TrendingUp, label: "Trade", href: "/search" }, // Search page to select symbol
       { icon: Package, label: "Orders", href: "/orders" },
       { icon: Wallet, label: "Portfolio", href: "/portfolio" },
       { icon: LineChart, label: "Market", href: "/market" },
