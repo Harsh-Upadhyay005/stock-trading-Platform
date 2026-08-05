@@ -1,520 +1,309 @@
-<div align="center">
+# TradeFlow - Full-Stack Trading Platform
 
-<img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js&logoColor=white" />
-<img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-<img src="https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
-<img src="https://img.shields.io/badge/Prisma-7-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
-<img src="https://img.shields.io/badge/Redis-8.8-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
-<img src="https://img.shields.io/badge/TimescaleDB-2.x-FDB515?style=for-the-badge&logo=timescale&logoColor=black" />
+TradeFlow is a production-ready trading platform built with Next.js 16, Prisma, PostgreSQL, and Clerk authentication. It provides a complete solution for equity and derivatives trading with real-time market data, portfolio management, and comprehensive admin tools.
 
-<br/><br/>
-
-# 📈 StockFlow
-
-### A production-grade, full-stack stock trading platform built with Next.js 16, PostgreSQL, and real-time market data infrastructure.
-
-<br/>
-
-[Features](#-features) · [Tech Stack](#-tech-stack) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [Project Structure](#-project-structure) · [API Reference](#-api-reference) · [Database Schema](#-database-schema) · [Deployment](#-deployment) · [Contributing](#-contributing)
-
-<br/>
-
-> ⚠️ **Disclaimer:** This project is for educational and demonstration purposes only. It is not a licensed financial service and should not be used for actual securities trading.
-
-</div>
-
----
-
-## ✨ Features
-
-### Trading
-- 🔄 **Real-time order placement** — Market, Limit, Stop-Loss, and Stop-Loss Market orders
-- 📊 **Live candlestick charts** — TradingView Lightweight Charts with 1m / 5m / 1d intervals
-- 📖 **Live order book** — Real-time bid/ask depth via Socket.io
-- 🔁 **Bracket & Cover orders** — Multi-leg order support with parent-child relationships
-- ⚡ **GTT (Good Till Triggered)** — Single and OCO trigger rules
-
-### Portfolio & Analytics
-- 💼 **Live portfolio tracking** — Unrealised and realised P&L updated on every fill
-- 📉 **Holdings breakdown** — Avg buy price, current value, day change
-- 📋 **Complete trade history** — With brokerage, STT, GST, and stamp duty breakdown
-- 💰 **Margin tracking** — Intraday vs overnight margin per instrument
-
-### Market Data
-- 📡 **Tick data ingestion** — Raw price ticks stored in TimescaleDB hypertables
-- 🕯️ **OHLCV candles** — 1m, 5m, 1d via TimescaleDB continuous aggregates
-- 🔔 **Price & volume alerts** — Repeating and one-shot alerts via multiple channels
-- 🔍 **Instrument search** — Full-text search with `pg_trgm` GIN indexes
-
-### Platform
-- 🔐 **Auth** — Email/password + Google OAuth via NextAuth.js v5, JWT with refresh rotation
-- 🪪 **KYC flow** — Document upload, admin review, status tracking
-- 🔑 **API keys** — Hashed API keys with scoped permissions for programmatic access
-- 👨‍💼 **Admin panel** — User management, KYC review, instrument master management
-- 📱 **Responsive** — Fully usable on mobile
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| **Framework** | Next.js 16 (App Router, React Server Components) |
-| **Language** | TypeScript 6 |
-| **Database** | PostgreSQL 16 + TimescaleDB 2.x |
-| **ORM** | Prisma 7 |
-| **Cache / PubSub** | Redis 8.8 (ioredis) |
-| **Auth** | NextAuth.js v5 (JWT + OAuth2) |
-| **Real-time** | Socket.io 4 on custom Next.js server |
-| **Queue** | BullMQ (order processing, alerts, notifications) |
-| **Validation** | Zod 3 |
-| **UI** | Tailwind CSS 4 + shadcn/ui + Radix UI |
-| **Charts** | TradingView Lightweight Charts 4 |
-| **State** | TanStack Query v5 + Zustand |
-| **Forms** | React Hook Form + Zod |
-| **Testing** | Vitest + React Testing Library + Playwright |
-| **Logging** | Pino (structured JSON) |
-
----
-
-## 🏗 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client (Browser)                      │
-│   Next.js App Router · TanStack Query · Zustand · Socket.io │
-└────────────────────────┬───────────────────────┬────────────┘
-                         │ HTTPS                  │ WSS
-┌────────────────────────▼───────────────────────▼────────────┐
-│                   Next.js 16 Server                          │
-│   API Route Handlers (app/api/)  ·  Socket.io Server        │
-│   NextAuth.js  ·  Zod Validation  ·  Pino Logging          │
-│   Edge Middleware: JWT Auth + Rate Limiting                  │
-└────────┬──────────────┬──────────────────┬──────────────────┘
-         │              │                  │
-┌────────▼───┐  ┌───────▼──────┐  ┌───────▼────────────────┐
-│ PostgreSQL │  │    Redis 8.8   │  │  BullMQ Workers         │
-│    16      │  │              │  │  (Order · Alert ·       │
-│ TimescaleDB│  │ Cache · RateL│  │   Notification)         │
-│ Prisma ORM │  │ imiter · PubS│  └────────────────────────┘
-│ RLS enabled│  │ub · Sessions │
-└────────────┘  └──────────────┘
-```
-
-### Data Flow — Order Placement
-
-```
-POST /api/orders
-  → Zod validation
-  → Margin check (service layer)
-  → DB: INSERT order (status: PENDING)
-  → BullMQ: push to order queue
-  → Worker: send to exchange adapter
-  → Exchange callback: UPDATE order (FILLED / REJECTED)
-  → DB transaction: update trade + portfolio + fund_transactions
-  → Redis PubSub → Socket.io → Client (live order update)
-```
-
-### Market Data Pipeline
-
-```
-External Feed Webhook
-  → POST /api/webhooks/market-feed
-  → Validate + normalize
-  → INSERT into tick_data (TimescaleDB hypertable)
-  → TimescaleDB continuous aggregates auto-refresh ohlcv_1m / 5m / 1d
-  → Redis PubSub broadcast → Socket.io → All subscribed clients
-```
-
----
-
-## 🚀 Getting Started
+## 🚀 Quick Start
 
 ### Prerequisites
+- Node.js 18+ and npm
+- PostgreSQL database
+- Clerk account for authentication
 
-- Node.js 20+
-- PostgreSQL 16 with TimescaleDB extension
-- Redis 8.8
-- pnpm (recommended) or npm
-
-### 1. Clone & Install
+### Installation
 
 ```bash
-git clone https://github.com/yourusername/stockflow.git
-cd stockflow
-pnpm install
+# Clone the repository
+git clone <repository-url>
+cd tradeflow
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Generate Prisma client
+npx prisma generate
+
+# Run database migrations
+npx prisma migrate deploy
+
+# Start development server
+npm run dev
 ```
 
-### 2. Environment Setup
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in the required variables (see [Environment Variables](#-environment-variables)).
-
-### 3. Database Setup
-
-```bash
-# Run Prisma migrations
-pnpx prisma migrate deploy
-
-# Set up TimescaleDB hypertables & continuous aggregates
-psql $DATABASE_URL -f database/sql/timescale/create_hypertables.sql
-
-# Create performance indexes + RLS policies
-psql $DATABASE_URL -f database/sql/indexes/performance_indexes_and_rls.sql
-
-# Seed development data
-pnpx ts-node database/prisma/seed.ts
-```
-
-### 4. Run the App
-
-```bash
-# Development (Next.js + Socket.io server + BullMQ workers)
-pnpm dev
-
-# Workers run separately in development
-pnpm dev:workers
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
----
+Visit `http://localhost:3000` to see the application.
 
 ## 📁 Project Structure
 
 ```
-stockflow/
-├── src/
-│   ├── app/
-│   │   ├── (auth)/                    # Login, Register pages
-│   │   │   ├── login/page.tsx
-│   │   │   └── register/page.tsx
-│   │   ├── (dashboard)/               # Main app (protected)
-│   │   │   ├── layout.tsx             # Sidebar + header layout
-│   │   │   ├── page.tsx               # Market overview dashboard
-│   │   │   ├── trade/
-│   │   │   │   ├── page.tsx           # Full trading terminal
-│   │   │   │   └── [symbol]/page.tsx  # Symbol-specific terminal
-│   │   │   ├── portfolio/
-│   │   │   │   ├── page.tsx           # Portfolio summary + P&L
-│   │   │   │   └── holdings/page.tsx  # Position breakdown
-│   │   │   ├── orders/
-│   │   │   │   ├── page.tsx           # Order book + history
-│   │   │   │   └── [id]/page.tsx      # Order detail + fills
-│   │   │   ├── watchlist/page.tsx
-│   │   │   ├── alerts/page.tsx
-│   │   │   └── settings/
-│   │   ├── admin/                     # Admin-only section
-│   │   │   ├── users/page.tsx
-│   │   │   └── instruments/page.tsx
-│   │   ├── api/
-│   │   │   ├── auth/[...nextauth]/route.ts
-│   │   │   ├── market/
-│   │   │   │   ├── quotes/route.ts
-│   │   │   │   ├── ohlcv/route.ts
-│   │   │   │   └── search/route.ts
-│   │   │   ├── orders/
-│   │   │   │   ├── route.ts
-│   │   │   │   └── [id]/
-│   │   │   │       ├── route.ts
-│   │   │   │       └── cancel/route.ts
-│   │   │   ├── portfolio/route.ts
-│   │   │   ├── watchlist/route.ts
-│   │   │   ├── alerts/route.ts
-│   │   │   ├── admin/
-│   │   │   └── webhooks/market-feed/route.ts
-│   │   ├── layout.tsx                 # Root layout + providers
-│   │   ├── providers.tsx
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── ui/                        # shadcn/ui components
-│   │   ├── charts/
-│   │   │   ├── CandlestickChart.tsx   # TradingView Lightweight Charts
-│   │   │   ├── PortfolioPieChart.tsx
-│   │   │   └── PnLLineChart.tsx
-│   │   ├── trade/
-│   │   │   ├── OrderForm.tsx
-│   │   │   ├── OrderBook.tsx
-│   │   │   └── TradeHistory.tsx
-│   │   ├── portfolio/
-│   │   ├── market/
-│   │   ├── layout/
-│   │   └── shared/
-│   │       ├── DataTable.tsx          # TanStack Table v8
-│   │       └── PriceChange.tsx
-│   ├── hooks/
-│   │   ├── useMarketSocket.ts
-│   │   ├── useOrderSocket.ts
-│   │   ├── useOrders.ts               # TanStack Query wrappers
-│   │   └── usePortfolio.ts
-│   ├── services/
-│   │   ├── order.service.ts
-│   │   ├── portfolio.service.ts
-│   │   ├── market.service.ts
-│   │   └── alert.service.ts
-│   ├── workers/
-│   │   ├── order.worker.ts            # BullMQ order processor
-│   │   └── alert.worker.ts
-│   ├── store/
-│   │   ├── market.store.ts            # Zustand: live prices
-│   │   └── ui.store.ts
-│   ├── lib/
-│   │   ├── db.ts                      # Prisma singleton
-│   │   ├── redis.ts                   # ioredis singleton
-│   │   ├── auth.ts                    # NextAuth config
-│   │   ├── socket.ts                  # Socket.io server
-│   │   └── queue.ts                   # BullMQ setup
-│   ├── validators/                    # Zod schemas
-│   ├── types/
-│   └── middleware.ts                  # Edge auth + rate limiting
-├── database/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   ├── migrations/
-│   │   └── seed.ts
-│   └── sql/
-│       ├── timescale/
-│       │   └── create_hypertables.sql
-│       └── indexes/
-│           └── performance_indexes_and_rls.sql
-├── server.ts                          # Custom Next.js + Socket.io server
-├── .env.example
-└── README.md
+tradeflow/
+├── app/                          # Next.js 14 App Router
+│   ├── (dashboard)/             # Main dashboard pages (auth required)
+│   │   ├── dashboard/           # Portfolio overview
+│   │   ├── trade/               # Trading interface
+│   │   ├── orders/              # Order management
+│   │   ├── portfolio/           # Portfolio & holdings
+│   │   ├── positions/           # Open positions
+│   │   ├── market/              # Market overview
+│   │   ├── watchlists/          # Watchlist management
+│   │   ├── search/              # Symbol search
+│   │   ├── alerts/              # Price alerts
+│   │   ├── notifications/       # User notifications
+│   │   ├── activity/            # Activity timeline
+│   │   ├── reports/             # Reports & analytics
+│   │   ├── analytics/           # Performance analytics
+│   │   ├── summary/             # Account summary
+│   │   ├── funds/               # Fund management
+│   │   ├── account/             # Profile, settings, banking, KYC
+│   │   ├── admin/               # Admin dashboard, users, instruments
+│   │   ├── tools/               # Trading calculators
+│   │   └── help/                # Help & support
+│   ├── (onboarding)/            # New user onboarding
+│   │   ├── welcome/             # Welcome page
+│   │   ├── profile/             # Profile setup
+│   │   └── risk-assessment/     # Risk questionnaire
+│   ├── api/                     # API routes (40+ endpoints)
+│   │   ├── portfolio/           # Portfolio APIs
+│   │   ├── orders/              # Order APIs
+│   │   ├── market/              # Market data APIs
+│   │   ├── instruments/         # Instrument APIs
+│   │   ├── watchlists/          # Watchlist APIs
+│   │   ├── alerts/              # Alert APIs
+│   │   ├── notifications/       # Notification APIs
+│   │   ├── activity/            # Activity APIs
+│   │   ├── reports/             # Report APIs
+│   │   ├── account/             # Account APIs
+│   │   ├── funds/               # Fund APIs
+│   │   └── admin/               # Admin APIs
+│   ├── page.tsx                 # Landing page
+│   ├── layout.tsx               # Root layout
+│   └── providers.tsx            # React Query provider
+├── components/                   # Reusable components
+│   ├── ui/                      # shadcn/ui components
+│   ├── loading/                 # Loading skeletons
+│   └── error/                   # Error states
+├── lib/                         # Utilities & helpers
+│   ├── api-client.ts           # Centralized API client
+│   ├── types/api.ts            # TypeScript types
+│   ├── hooks/use-queries.ts    # React Query hooks
+│   ├── brokers/                # Broker integrations
+│   └── prisma.ts               # Prisma client
+├── generated/prisma/           # Prisma generated files
+│   └── schema.prisma           # Database schema
+├── services/                    # Business logic services
+├── validators/                  # Zod validation schemas
+└── docs/                       # Documentation
+    ├── API_REFERENCE.md        # API documentation
+    ├── ARCHITECTURE.md         # Architecture guide
+    └── DEPLOYMENT.md           # Deployment guide
 ```
 
----
+## 🎨 Features
 
-## 🗄 Database Schema
+### Core Trading
+- **Real-time Market Data** - Live quotes and market depth
+- **Order Management** - Place, modify, cancel orders (MKT, LMT, SL, SL-M)
+- **Portfolio Tracking** - Holdings, positions, P&L tracking
+- **Multi-Asset Support** - Equity, Derivatives (Options, Futures)
+- **Watchlists** - Create and manage multiple watchlists
+- **Price Alerts** - Set price-based alerts with notifications
 
-17 models across 6 domains. All money values stored as **BigInt in paise** to avoid floating-point errors.
+### User Experience
+- **Responsive Design** - Works on desktop, tablet, and mobile
+- **Dark/Light Theme** - Monochrome black & white design
+- **Real-time Updates** - React Query with optimistic updates
+- **Loading States** - Skeleton loaders for better UX
+- **Error Handling** - Comprehensive error messages
+- **Toast Notifications** - sonner for user feedback
 
-| Domain | Models |
-|---|---|
-| **Auth & Users** | `User`, `Session`, `OAuthAccount`, `KycDocument`, `UserPreference`, `UserDevice`, `ApiKey` |
-| **Trading Accounts** | `Account`, `AccountMargin` |
-| **Instruments** | `Instrument`, `InstrumentMargin` |
-| **Orders & Trades** | `Order`, `Trade`, `FundTransaction` |
-| **Market Data** | `TickData`, `Ohlcv1m`, `Ohlcv5m`, `Ohlcv1d` (TimescaleDB hypertables) |
-| **Features** | `Watchlist`, `WatchlistItem`, `Alert`, `AlertTriggerLog`, `Notification`, `GttRule`, `AuditLog` |
+### Account Management
+- **Profile Management** - Personal info, trading experience
+- **Bank Accounts** - Multiple bank accounts, primary selection
+- **KYC Verification** - Document upload and verification
+- **Fund Management** - Deposit, withdraw, transaction history
+- **Settings** - Notifications, 2FA, privacy controls
 
-Key design decisions:
+### Admin Tools
+- **User Management** - View, suspend, activate users
+- **KYC Verification** - Approve/reject KYC applications
+- **Instrument Management** - Enable/disable trading
+- **Platform Statistics** - User metrics, trading volume
 
-- **All monetary values in BigInt (paise)** — ₹100.50 is stored as `10050`. No floats near financials.
-- **TimescaleDB hypertables** for `tick_data` and `ohlcv_*` — automatic time partitioning, columnar compression, and continuous aggregates.
-- **Optimistic locking** on `orders` and `portfolios` via a `version` column — prevents race conditions on concurrent fills.
-- **Row Level Security (RLS)** at the database layer — users can only access their own data regardless of application bugs.
-- **Append-only `audit_log`** — every state-mutating action is logged with before/after snapshots.
+### Security
+- **Authentication** - Clerk-based secure authentication
+- **Role-Based Access** - Admin/user role separation
+- **API Security** - All endpoints protected with auth checks
+- **Input Validation** - Zod schemas for all inputs
+- **SQL Injection Prevention** - Prisma parameterized queries
 
-See [`database/prisma/schema.prisma`](database/prisma/schema.prisma) for the full schema.
+## 🛠 Technology Stack
 
----
+### Frontend
+- **Framework:** Next.js 14 (App Router)
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS
+- **UI Components:** shadcn/ui (Radix UI)
+- **State Management:** React Query (TanStack Query)
+- **Forms:** React Hook Form + Zod
+- **Notifications:** sonner
+- **Charts:** Recharts
 
-## 📡 API Reference
+### Backend
+- **Runtime:** Node.js
+- **API:** Next.js API Routes
+- **Database:** PostgreSQL
+- **ORM:** Prisma
+- **Authentication:** Clerk
+- **Validation:** Zod
 
-All endpoints require `Authorization: Bearer <token>` except auth routes.
+### Infrastructure
+- **Deployment:** Vercel (recommended)
+- **Database Hosting:** Neon, Supabase, or Railway
+- **File Storage:** Ready for S3/Cloudflare R2
+- **Monitoring:** Ready for Sentry integration
 
-### Auth
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/auth/signin` | Sign in with email or OAuth |
-| `POST` | `/api/auth/signout` | Invalidate session |
-| `POST` | `/api/auth/refresh` | Rotate access token |
-| `GET` | `/api/auth/session` | Current session |
+## 📊 Database Schema
 
-### Market Data
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/market/quotes?symbols=RELIANCE,TCS` | Live quotes (Redis-cached, 1s TTL) |
-| `GET` | `/api/market/ohlcv?symbol=RELIANCE&interval=5m` | OHLCV candles |
-| `GET` | `/api/market/search?q=reli` | Instrument search |
+### Core Tables
+- **User** - User accounts with Clerk integration
+- **Portfolio** - User portfolio summaries
+- **Holding** - Current stock holdings
+- **Position** - Open trading positions
+- **Order** - Order history and status
+- **Instrument** - Tradable instruments (stocks, options)
+- **Watchlist** - User watchlists
+- **WatchlistItem** - Items in watchlists
+- **Alert** - Price alerts
+- **Notification** - User notifications
+- **Activity** - Activity logs
+- **BankAccount** - User bank accounts
+- **Transaction** - Fund transactions
 
-### Orders
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/orders` | Paginated order history |
-| `POST` | `/api/orders` | Place a new order |
-| `GET` | `/api/orders/:id` | Order detail + fill history |
-| `PATCH` | `/api/orders/:id` | Modify pending order |
-| `POST` | `/api/orders/:id/cancel` | Cancel pending order |
+See `generated/prisma/schema.prisma` for complete schema.
 
-### Portfolio
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/portfolio` | Summary: total value, day P&L |
-| `GET` | `/api/portfolio/holdings` | Individual position breakdown |
-
-### Watchlist & Alerts
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET / POST` | `/api/watchlist` | List or create watchlists |
-| `PATCH / DELETE` | `/api/watchlist/:id` | Update or delete |
-| `GET / POST` | `/api/alerts` | List or create price alerts |
-| `DELETE` | `/api/alerts/:id` | Remove alert |
-
-### Standard Response Format
-
-```json
-// Success
-{
-  "success": true,
-  "data": { },
-  "meta": { "page": 1, "total": 100, "limit": 20 }
-}
-
-// Error
-{
-  "success": false,
-  "error": {
-    "code": "INSUFFICIENT_MARGIN",
-    "message": "Required margin ₹12,450. Available ₹8,200.",
-    "details": {}
-  }
-}
-```
-
----
-
-## 🌍 Environment Variables
+## 🔐 Environment Variables
 
 ```env
 # Database
-DATABASE_URL="postgresql://user:password@localhost:5432/stockflow"
-DIRECT_DATABASE_URL="postgresql://user:password@localhost:5432/stockflow"
+DATABASE_URL="postgresql://user:password@host:5432/tradeflow"
 
-# Redis
-REDIS_URL="redis://localhost:6379"
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_..."
+CLERK_SECRET_KEY="sk_..."
+NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in"
+NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
 
-# Auth
-NEXTAUTH_SECRET="your-32-char-random-secret"
-NEXTAUTH_URL="http://localhost:3000"
-JWT_ACCESS_EXPIRY="15m"
-JWT_REFRESH_EXPIRY="7d"
+# API Configuration
+NEXT_PUBLIC_API_URL="http://localhost:3000/api"
 
-# OAuth (optional)
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
+# Broker Configuration
+BROKER_TYPE="mock"  # Options: mock, zerodha, upstox, angelone
+BROKER_API_KEY=""
+BROKER_API_SECRET=""
+BROKER_REDIRECT_URL=""
 
-# Market Data Feed
-MARKET_FEED_API_KEY=""
-MARKET_FEED_WEBHOOK_SECRET=""
+# Optional: WebSocket
+NEXT_PUBLIC_WS_URL="ws://localhost:3001"
 
-# Exchange Integration
-EXCHANGE_API_KEY=""
-EXCHANGE_API_SECRET=""
-EXCHANGE_BASE_URL=""
-
-# App
-NODE_ENV="development"
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
-NEXT_PUBLIC_SOCKET_URL="http://localhost:3000"
-PINO_LOG_LEVEL="debug"
+# Optional: Rate Limiting
+RATE_LIMIT_ENABLED="true"
+RATE_LIMIT_MAX_REQUESTS="100"
+RATE_LIMIT_WINDOW_MS="60000"
 ```
 
----
+## 🚀 Deployment
 
-## 🚢 Deployment
+### Vercel (Recommended)
 
-### Docker (Self-hosted)
+1. **Connect Repository**
+   ```bash
+   vercel
+   ```
+
+2. **Add Environment Variables**
+   - Go to Vercel Dashboard → Project Settings → Environment Variables
+   - Add all variables from `.env.example`
+
+3. **Deploy**
+   ```bash
+   vercel --prod
+   ```
+
+### Docker
 
 ```bash
-# Build and run all services
-docker compose up -d
+# Build image
+docker build -t tradeflow .
 
-# Run migrations inside container
-docker compose exec app pnpx prisma migrate deploy
-docker compose exec app psql $DATABASE_URL -f database/sql/timescale/create_hypertables.sql
+# Run container
+docker run -p 3000:3000 --env-file .env tradeflow
 ```
 
-> Note: Socket.io requires a persistent server. Self-hosting via Docker or Railway is recommended. Vercel Serverless does not support Socket.io without additional configuration.
+See `docs/DEPLOYMENT.md` for detailed deployment instructions.
 
-### Vercel (Without Socket.io)
+## 📖 Documentation
 
-If you don't need real-time WebSocket features, the app deploys to Vercel as-is:
-
-```bash
-vercel deploy
-```
-
-Add all environment variables in the Vercel dashboard under **Settings → Environment Variables**.
-
----
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture and design decisions
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Deployment instructions and best practices
 
 ## 🧪 Testing
 
 ```bash
-# Unit + integration tests (Vitest)
-pnpm test
+# Run tests (when implemented)
+npm test
 
-# Run with coverage
-pnpm test:coverage
+# Run E2E tests
+npm run test:e2e
 
-# API integration tests (Supertest against test DB)
-pnpm test:api
+# Type checking
+npm run type-check
 
-# End-to-end tests (Playwright)
-pnpm test:e2e
+# Linting
+npm run lint
 ```
-
-Target coverage: **80%+** on services and API route handlers.
-
----
-
-## 🔐 Security
-
-- JWT access tokens (15m expiry) + refresh token rotation
-- Edge middleware validates tokens before requests reach route handlers
-- Rate limiting: 100 req/min per user, 20 req/min on order placement
-- All inputs validated with Zod — no raw user input reaches the database
-- Prisma parameterized queries — SQL injection is not possible
-- Row Level Security (RLS) at DB layer as a secondary enforcement layer
-- API keys stored as SHA-256 hashes — the plaintext is shown once and never stored
-- CSRF protection on all state-mutating routes
-- Helmet security headers on the custom server
-
----
-
-## 🗺 Roadmap
-
-- [ ] Options chain view
-- [ ] Paper trading mode (simulated fills, no real money)
-- [ ] Strategy backtesting with historical OHLCV data
-- [ ] Mobile app (React Native + shared API layer)
-- [ ] Multi-broker support via unified adapter interface
-- [ ] Webhook support for third-party alert delivery
-- [ ] Tax P&L report generation (FIFO + LIFO)
-
----
 
 ## 🤝 Contributing
 
-Contributions are welcome. Please follow these steps:
+Contributions are welcome! Please follow these steps:
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Commit with conventional commits: `git commit -m "feat: add options chain view"`
-4. Push and open a Pull Request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-Please make sure all tests pass before submitting a PR:
+## 📝 License
 
-```bash
-pnpm test && pnpm test:e2e
-```
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- [Next.js](https://nextjs.org/) - React framework
+- [Prisma](https://www.prisma.io/) - Database ORM
+- [Clerk](https://clerk.com/) - Authentication
+- [shadcn/ui](https://ui.shadcn.com/) - UI components
+- [TanStack Query](https://tanstack.com/query) - Data fetching
+
+## 📞 Support
+
+For support, email support@tradeflow.com or join our Slack channel.
+
+## 🗺 Roadmap
+
+- [ ] WebSocket integration for real-time updates
+- [ ] Advanced charting with TradingView
+- [ ] Options chain visualization
+- [ ] Strategy builder and backtesting
+- [ ] Mobile app (React Native)
+- [ ] API rate limiting with Redis
+- [ ] Email/SMS notifications
+- [ ] Multi-language support
+- [ ] PDF report generation
+- [ ] Tax report automation
 
 ---
 
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-Built with Next.js 15, PostgreSQL, TimescaleDB, and Redis.
-
-If you found this useful, consider giving it a ⭐
-
-</div>
+**Built with ❤️ by the TradeFlow Team**
