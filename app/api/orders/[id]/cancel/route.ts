@@ -21,7 +21,7 @@ export const POST = withRateLimit(
       const order = await orderService.cancelOrder(user.id, id)
 
       // Audit log
-      const sessionId = await getSessionId()
+      const sessionId = getSessionId(req)
       await db.auditLog.create({
         data: {
           userId: user.id,
