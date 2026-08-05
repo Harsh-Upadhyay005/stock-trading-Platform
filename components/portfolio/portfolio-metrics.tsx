@@ -6,13 +6,36 @@ interface PortfolioMetricsProps {
 }
 
 async function getPortfolioMetrics(userId: string) {
-  // Mock data
-  return {
-    totalValue: 1245680,
-    cash: 250000,
-    invested: 1000000,
-    totalReturn: 245680,
-    totalReturnPercent: 24.57,
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/portfolio/summary?accountId=${userId}`,
+      {
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch portfolio metrics')
+    }
+
+    const data = await response.json()
+    return data.summary || data || {
+      totalValue: 0,
+      cash: 0,
+      invested: 0,
+      totalReturn: 0,
+      totalReturnPercent: 0,
+    }
+  } catch (error) {
+    console.error('Error fetching portfolio metrics:', error)
+    return {
+      totalValue: 0,
+      cash: 0,
+      invested: 0,
+      totalReturn: 0,
+      totalReturnPercent: 0,
+    }
   }
 }
 
