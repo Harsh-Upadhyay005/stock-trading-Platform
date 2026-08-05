@@ -21,102 +21,26 @@ interface OrdersTableProps {
 }
 
 async function getOrders(userId: string, filters: any) {
-  // Mock data - replace with actual API call
-  const allOrders = [
-    {
-      id: "ORD-12345",
-      symbol: "AAPL",
-      side: "BUY",
-      type: "LIMIT",
-      status: "OPEN",
-      quantity: 100,
-      filled: 0,
-      price: 18400,
-      filledPrice: null,
-      amount: 1840000,
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12344",
-      symbol: "TSLA",
-      side: "SELL",
-      type: "MARKET",
-      status: "FILLED",
-      quantity: 50,
-      filled: 50,
-      price: null,
-      filledPrice: 15200,
-      amount: 760000,
-      createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12343",
-      symbol: "GOOGL",
-      side: "BUY",
-      type: "STOP",
-      status: "OPEN",
-      quantity: 25,
-      filled: 0,
-      price: 2850,
-      filledPrice: null,
-      amount: 71250,
-      createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12342",
-      symbol: "MSFT",
-      side: "BUY",
-      type: "LIMIT",
-      status: "CANCELLED",
-      quantity: 75,
-      filled: 0,
-      price: 320,
-      filledPrice: null,
-      amount: 24000,
-      createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12341",
-      symbol: "AMZN",
-      side: "SELL",
-      type: "MARKET",
-      status: "FILLED",
-      quantity: 10,
-      filled: 10,
-      price: null,
-      filledPrice: 3450,
-      amount: 34500,
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12340",
-      symbol: "NVDA",
-      side: "BUY",
-      type: "LIMIT",
-      status: "PARTIALLY_FILLED",
-      quantity: 200,
-      filled: 150,
-      price: 450,
-      filledPrice: 448,
-      amount: 90000,
-      createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-    },
-    {
-      id: "ORD-12339",
-      symbol: "META",
-      side: "SELL",
-      type: "STOP_LIMIT",
-      status: "REJECTED",
-      quantity: 30,
-      filled: 0,
-      price: 485,
-      filledPrice: null,
-      amount: 14550,
-      createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000),
-    },
-  ]
+  try {
+    // Call the real API endpoint
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/orders`, {
+      cache: 'no-store', // Always fetch fresh data
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
 
-  return allOrders
+    if (!response.ok) {
+      throw new Error('Failed to fetch orders')
+    }
+
+    const data = await response.json()
+    return data.orders || data || []
+  } catch (error) {
+    console.error('Error fetching orders:', error)
+    // Return empty array on error - handle in UI
+    return []
+  }
 }
 
 export async function OrdersTable({ userId, activeTab, searchParams }: OrdersTableProps) {
