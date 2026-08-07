@@ -21,12 +21,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en" className={`${inter.variable} h-full`}>
-        <body className="min-h-full antialiased">
+    <html lang="en" className={`${inter.variable} h-full`}>
+      <body className="min-h-full antialiased">
+        <ClerkProvider>
           <Providers>{children}</Providers>
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkProvider>
+      </body>
+    </html>
   );
 }
